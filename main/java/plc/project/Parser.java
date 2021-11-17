@@ -53,9 +53,15 @@ public final class Parser {
 
         Optional<Ast.Expr> receiver = Optional.empty();
         String name = "";
+        String typename = "";
 
         if(match(Token.Type.IDENTIFIER)) {
             name = tokens.get(-1).getLiteral();
+
+            match(":");
+            match(Token.Type.IDENTIFIER);
+
+            typename = tokens.get(-1).getLiteral();
 
             if (match("=")) {
                 Ast.Expr expr = parseExpression();
@@ -65,7 +71,7 @@ public final class Parser {
                 throw new ParseException("Expected ;", tokens.index);
             }
         }
-        return new Ast.Field(name, receiver);
+        return new Ast.Field(name, typename, receiver);
     }
 
     /**
@@ -76,38 +82,69 @@ public final class Parser {
 
         String name = "";
         List<String> parameters = new ArrayList<>();
+        List<String> parameterTypeNames = new ArrayList<>();
+        Optional<String> returnTypeName = Optional.empty();
         List<Ast.Stmt> statements = new ArrayList<>();
 
         if(match(Token.Type.IDENTIFIER)) {
             name = tokens.get(-1).getLiteral();
             if(match("(")) {
                 if (match(Token.Type.IDENTIFIER)) {
-                    parameters.add(new String(tokens.get(-1).getLiteral()));
+                    parameters.add(tokens.get(-1).getLiteral());
+                    match(":");
+                    match(Token.Type.IDENTIFIER);
+                    parameterTypeNames.add(tokens.get(-1).getLiteral());
                     while (match(",")) {
                         parameters.add(tokens.get(0).getLiteral());
+                        match(":");
+                        match(Token.Type.IDENTIFIER);
+                        parameterTypeNames.add(tokens.get(-1).getLiteral());
                         tokens.advance();
                     }
                 }
                 if (match(")")) {
+
+                    if (match(":")) {
+                        match(Token.Type.IDENTIFIER);
+                        returnTypeName = Optional.of(tokens.get(-1).getLiteral());
+                    }
+
                     if(match("DO")) {
                         while(tokens.has(1))  {
                             statements.add(parseStatement());
                             tokens.advance();
                         }
                         if(!peek("END")) {
-                            throw new ParseException("Expected \"END\"", tokens.index);
+                            if (tokens.has(0))
+                                throw new ParseException("Expected \"END\"", tokens.get(0).getIndex());
+                            else
+                                throw new ParseException("Expected \"END\"", tokens.get(-1).getIndex());
                         }
-                    } else
-                        throw new ParseException("Expected \"DO\"", tokens.index);
+                    } else {
+                        if (tokens.has(0))
+                            throw new ParseException("Expected \"DO\"", tokens.get(0).getIndex());
+                        else
+                            throw new ParseException("Expected \"DO\"", tokens.get(-1).getIndex());
+
+                    }
                 } else
-                    throw new ParseException("Expected )", tokens.index);
+                if (tokens.has(0))
+                    throw new ParseException("Expected )", tokens.get(0).getIndex());
+                else
+                    throw new ParseException("Expected )", tokens.get(-1).getIndex());
             } else
-                throw new ParseException("Expected (", tokens.index);
+            if (tokens.has(0))
+                throw new ParseException("Expected (", tokens.get(0).getIndex());
+            else
+                throw new ParseException("Expected (", tokens.get(-1).getIndex());
         }
         else {
-            throw new ParseException("Expected an Identifier", tokens.index);
+            if (tokens.has(0))
+                throw new ParseException("Expected an Identifier", tokens.get(0).getIndex());
+            else
+                throw new ParseException("Expected an Identifier", tokens.get(-1).getIndex());
         }
-        return new Ast.Method(name,parameters,statements);
+        return new Ast.Method(name,parameters, parameterTypeNames, returnTypeName, statements);
     }
 
     /**
@@ -133,15 +170,21 @@ public final class Parser {
             return parseReturnStatement();
         }
         else {
+
             Ast.Expr expr = parseExpression();
 
             if(match("=")) {
 
                 Ast.Expr value = parseExpression();
 
-                if(match(";"))
-                    return new Ast.Stmt.Assignment(expr, value);
-                throw new ParseException("Expected ;", tokens.index);
+                if (value != null) {
+                    if(peek(";"))
+                        return new Ast.Stmt.Assignment(expr, value);
+                    else
+                        throw new ParseException("Expected ;", tokens.index);
+                } else
+                    throw new ParseException("Value missing", tokens.index);
+
             }
 
             return new Ast.Stmt.Expression(expr);
@@ -156,10 +199,15 @@ public final class Parser {
     public Ast.Stmt.Declaration parseDeclarationStatement() throws ParseException {
 
         String name = "";
+        Optional<String> typeName = Optional.empty();
         Optional<Ast.Expr> value = Optional.empty();
 
         if (match(Token.Type.IDENTIFIER)) {
             name = tokens.get(-1).getLiteral();
+            if (match(":")) {
+                match(Token.Type.IDENTIFIER);
+                typeName = Optional.of(tokens.get(-1).getLiteral());
+            }
             if (match("=")) {
                 value = Optional.of(parseExpression());
             }
@@ -168,9 +216,9 @@ public final class Parser {
             throw new ParseException("Expected an Identifier", tokens.index);
         }
         if (!match(";")) {
-            throw new ParseException("Expected an Identifier", tokens.index);
+            throw new ParseException("Expected ;", tokens.index);
         }
-        return new Ast.Stmt.Declaration(name, value);
+        return new Ast.Stmt.Declaration(name, typeName, value);
     }
 
     /**
@@ -277,8 +325,12 @@ public final class Parser {
         Ast.Expr value = parseExpression();
         if(!peek(";"))
             throw new ParseException("Expected ;", tokens.index);
-        else
-            return new Ast.Stmt.Return(value);
+        else {
+            if (value != null)
+                return new Ast.Stmt.Return(value);
+            else
+                throw new ParseException("Value missing", tokens.index);
+        }
     }
 
     /**
@@ -387,6 +439,8 @@ public final class Parser {
                     } else
                         throw new ParseException("Expected )", tokens.index);
                 }
+            } else {
+                throw new ParseException("Expected identifier", tokens.index);
             }
             return new Ast.Expr.Access(receiver, name);
         }

@@ -84,7 +84,7 @@ public final class Lexer {
     //need to look at - project spec has integer and decimal not number
     public Token lexNumber() {
 
-        if (!match("[+-]?","[0-9]"))
+        if (!match("[+-]?","[0-9]") && !match("[0-9]"))
             throw new ParseException("Something went wrong.", chars.index);
         else if (chars.has(1)) {
             while (match("[0-9]+")) {}
@@ -122,7 +122,7 @@ public final class Lexer {
 
     public Token lexString() {
 
-        if (!match("\""))
+        if (!match("[\"]"))
             throw new ParseException("Something went wrong.", chars.index);
         else {
             while (!match("\"")) {
@@ -144,9 +144,13 @@ public final class Lexer {
     //need to look at - possibly incorrect regex
     public Token lexOperator() {
 
-        if (match("[<>!=]'='?|.")) {
-            Token myToken = new Token(Token.Type.OPERATOR, "Operator", chars.index);
-            return myToken;
+        if (match("[<>!=]'='?|[^ ]")) {
+            if (peek("=")) {
+                chars.advance();
+                return new Token(Token.Type.OPERATOR, String.valueOf(chars.get(-2)) + String.valueOf(chars.get(-1)), chars.index - 2);
+            } else {
+                return new Token(Token.Type.OPERATOR, String.valueOf(chars.get(-1)), chars.index - 1);
+            }
         } else {
             throw new ParseException("Something went wrong.", chars.index);
         }
